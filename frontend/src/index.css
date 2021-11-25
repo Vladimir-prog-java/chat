@@ -45,7 +45,7 @@
   border-right: 1px solid rgba(159, 183, 197, 0.1);
   padding: 20px;
   width: 200px;
-  background-color: #f6f9fa;
+  background-color: #33a3c9;
 }
 
 .chat-messages {
@@ -54,6 +54,13 @@
   justify-content: space-between;
   flex: 1;
   padding: 30px;
+}
+
+.chat-rooms {
+  border-left: 1px solid rgba(159, 183, 197, 0.1);
+  padding: 20px;
+  width: 200px;
+  background-color: #f4f802;
 }
 
 .messages {
@@ -70,7 +77,7 @@
   display: inline-flex;
   border-radius: 10px;
   border-top: 1px solid rgba(0, 0, 0, 0.1);
-  background-color: #7160ff;
+  background-color: #59df0b;
   padding: 10px 15px 15px;
   color: #fff;
   margin-bottom: 2px;

@@ -1,108 +1,164 @@
-const express = require("express");
-const session = require("express-session");
-const SessionFileStore = require("session-file-store")(session);
-const path = require("path");
-const cors = require("cors");
-const dotenv = require("dotenv");
-// const { sequelize } = require('./db/models');
+require('dotenv').config();
+const express = require('express');
 
 const app = express();
-const server = require("http").Server(app);
-const io =require("socket.io")(server);
+const server = require('http').Server(app);
+const io = require('socket.io')(server, {
+  cors: {
+    origin: '*'
+  }
+});
+const PORT = process.env.PORT || 5000;
 
+app.use(express.json());
 
-dotenv.config();
-
-const { PORT = 5000, SESSION_SECRET = "my_secret" } = process.env;
-
-const sessionConfig = {
-  store: new SessionFileStore(),
-  name: "user_sid",
-  secret: SESSION_SECRET,
-  resave: true,
-  saveUninitialized: false,
-  cookie: {
-    maxAge: 24 * 60 * 60 * 1000,
-    httpOnly: true,
-  },
+const chatData = {
+  currentRoomId: null,
+  currentUserName: null,
+  rooms: []
 };
-
-const corsOptions = {
-  origin: ["http://localhost:3000"],
-  credentials: true,
-  optionsSuccessStatus: 200,
-};
-
-const rooms = new Map();
-
-app.use(session(sessionConfig));
-app.use(cors(corsOptions));
-
-// app.use(express.urlencoded({ extended: true }));
-// app.use(express.json());
-
-app.use(express.urlencoded({ limit: "50mb", extended: true }));
-app.use(express.json({ limit: "50mb" }));
-
-// Serve static files from the React app
-// app.use(express.static(path.join(__dirname, "..", "frontend", "build")));
-
 
 app.get('/rooms/:id', (req, res) => {
-  const { id: roomId } = req.params;
-  const obj = rooms.has(roomId)
-    ? {
-        users: [...rooms.get(roomId).get('users').values()],
-        messages: [...rooms.get(roomId).get('messages').values()],
-      }
-    : { users: [], messages: [] };
-  res.json(obj);
+
+  res.json({data: chatData.rooms});
 });
 
 app.post('/rooms', (req, res) => {
   const { roomId, userName } = req.body;
-  if (!rooms.has(roomId)) {
-    rooms.set(
+
+  chatData.currentRoomId = roomId;
+  chatData.currentUserName = userName;
+  const roomIndex = chatData.rooms.findIndex((room) => room.roomId === roomId);
+
+  if(roomIndex === -1) {
+    chatData.rooms.push({
       roomId,
-      new Map([
-        ['users', new Map()],
-        ['messages', []],
-      ]),
-    );
+      users: [{userName, id: null}],
+      messages: [],
+    })
+  } else {
+    chatData.rooms[roomIndex].users.push({userName });
   }
+
   res.send();
 });
 
 io.on('connection', (socket) => {
   socket.on('ROOM:JOIN', ({ roomId, userName }) => {
     socket.join(roomId);
-    rooms.get(roomId).get('users').set(socket.id, userName);
-    const users = [...rooms.get(roomId).get('users').values()];
-    socket.to(roomId).broadcast.emit('ROOM:SET_USERS', users);
+    const roomIndex = chatData.rooms.findIndex((room) => room.roomId === roomId);
+    const userIndex = chatData.rooms[roomIndex].users.findIndex(user => user.userName === userName);
+    
+    chatData.currentRoomId = roomId;
+    chatData.currentUserName = userName;
+    
+    if( userIndex !== -1) {
+      chatData.rooms[roomIndex].users[userIndex].id = socket.id;
+    } else {
+      chatData.rooms[roomIndex].users.push({ userName, id: socket.id})
+    }
+    
+    const users = chatData.rooms[roomIndex].users;
+    console.log(users);
+    socket.to(roomId).emit('ROOM:SET_USERS', { users, roomId });
   });
 
   socket.on('ROOM:NEW_MESSAGE', ({ roomId, userName, text }) => {
     const obj = {
       userName,
       text,
+      date: new Date()
     };
-    rooms.get(roomId).get('messages').push(obj);
-    socket.to(roomId).broadcast.emit('ROOM:NEW_MESSAGE', obj);
+    const roomIndex = chatData.rooms.findIndex((room) => room.roomId === roomId);
+    chatData.rooms[roomIndex].messages.push(obj);
+    socket.to(roomId).emit('ROOM:NEW_MESSAGE', obj);
   });
 
   socket.on('disconnect', () => {
-    rooms.forEach((value, roomId) => {
-      if (value.get('users').delete(socket.id)) {
-        const users = [...value.get('users').values()];
-        socket.to(roomId).broadcast.emit('ROOM:SET_USERS', users);
-      }
-    });
+    const roomIndex = chatData.rooms.findIndex((room) => room.roomId === chatData.currentRoomId);
+    chatData.rooms[roomIndex].users = chatData.rooms[roomIndex].users.filter(user => user.id !== socket.id);
+    const users = chatData.rooms[roomIndex].users;
+    socket.to(chatData.currentRoomId).emit('ROOM:SET_USERS', users);
+    console.log('user disconnected', socket.id);
   });
 
   console.log('user connected', socket.id);
 });
 
-
-app.listen(PORT, async () => {
-  console.log(`Server started on PORT: ${PORT}`);
+server.listen(PORT, (err) => {
+  if (err) {
+    throw Error(err);
+  }
+  console.log(`server started at PORT: ${PORT}`);
 });
+
+// const express = require('express');
+
+// const app = express();
+// const server = require('http').Server(app);
+// const io = require('socket.io')(server);
+
+// app.use(express.json());
+
+// const rooms = new Map();
+
+// app.get('/rooms/:id', (req, res) => {
+//   const { id: roomId } = req.params;
+//   const obj = rooms.has(roomId)
+//     ? {
+//         users: [...rooms.get(roomId).get('users').values()],
+//         messages: [...rooms.get(roomId).get('messages').values()],
+//       }
+//     : { users: [], messages: [] };
+//   res.json(obj);
+// });
+
+// app.post('/rooms', (req, res) => {
+//   const { roomId, userName } = req.body;
+//   if (!rooms.has(roomId)) {
+//     rooms.set(
+//       roomId,
+//       new Map([
+//         ['users', new Map()],
+//         ['messages', []],
+//       ]),
+//     );
+//   }
+//   res.send();
+// });
+
+// io.on('connection', (socket) => {
+//   socket.on('ROOM:JOIN', ({ roomId, userName }) => {
+//     socket.join(roomId);
+//     rooms.get(roomId).get('users').set(socket.id, userName);
+//     const users = [...rooms.get(roomId).get('users').values()];
+//     socket.to(roomId).broadcast.emit('ROOM:SET_USERS', users);
+//   });
+
+//   socket.on('ROOM:NEW_MESSAGE', ({ roomId, userName, text }) => {
+//     const obj = {
+//       userName,
+//       text,
+//     };
+//     rooms.get(roomId).get('messages').push(obj);
+//     socket.to(roomId).broadcast.emit('ROOM:NEW_MESSAGE', obj);
+//   });
+
+//   socket.on('disconnect', () => {
+//     rooms.forEach((value, roomId) => {
+//       if (value.get('users').delete(socket.id)) {
+//         const users = [...value.get('users').values()];
+//         socket.to(roomId).broadcast.emit('ROOM:SET_USERS', users);
+//       }
+//     });
+//   });
+
+//   console.log('user connected', socket.id);
+// });
+
+// server.listen(5000, (err) => {
+//   if (err) {
+//     throw Error(err);
+//   }
+//   console.log('Сервер запущен!');
+// });
